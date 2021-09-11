@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 
-// use num::pow::pow;
 use num_bigint::BigUint;
 use std::collections::HashMap;
 
@@ -60,11 +59,172 @@ impl Stack {
     fn push(&mut self, b: [u8; 32]) {
         self.stack.push(b);
     }
+    // push_arbitrary performs a push, but first converting the arbitrary-length input into a 32
+    // byte array
+    fn push_arbitrary(&mut self, b: &[u8]) {
+        // TODO if b.len()>32 return error
+        let mut d: [u8; 32] = [0; 32];
+        d[32 - b.len()..].copy_from_slice(&b[..]);
+        self.stack.push(d);
+    }
     fn pop(&mut self) -> [u8; 32] {
         match self.stack.pop() {
             Some(x) => return x,
             None => panic!("err"),
         }
+    }
+    fn execute(&mut self, code: &[u8], calldata: &[u8], debug: bool) -> Vec<u8> {
+        self.pc = 0;
+        self.calldata_i = 0;
+        let l = code.len();
+
+        while self.pc < l {
+            let opcode = code[self.pc];
+            if !self.opcodes.contains_key(&opcode) {
+                panic!("invalid opcode {:x}", opcode);
+            }
+
+            match opcode & 0xf0 {
+                0x00 => {
+                    // arithmetic
+                    match opcode {
+                        0x00 => {
+                            return Vec::new();
+                        }
+                        0x01 => self.add(),
+                        0x02 => self.mul(),
+                        0x03 => self.sub(),
+                        0x04 => self.div(),
+                        0x05 => self.sdiv(),
+                        0x06 => self.modulus(),
+                        0x07 => self.smod(),
+                        0x08 => self.add_mod(),
+                        0x09 => self.mul_mod(),
+                        0x0a => self.exp(),
+                        // 0x0b => self.sign_extend(),
+                        _ => panic!("unimplemented {:x}", opcode),
+                    }
+                    self.pc += 1;
+                }
+                0x50 => {
+                    self.pc += 1;
+                    match opcode {
+                        0x52 => self.mstore(),
+                        _ => panic!("unimplemented {:x}", opcode),
+                    }
+                }
+                0x60 | 0x70 => {
+                    // push
+                    let n = (opcode - 0x5f) as usize;
+                    self.push_arbitrary(&code[self.pc + 1..self.pc + 1 + n]);
+                    self.pc += 1 + n;
+                }
+                0xf0 => {
+                    if opcode == 0xf3 {
+                        let pos_to_return = u256_to_u64(self.pop()) as usize;
+                        let len_to_return = u256_to_u64(self.pop()) as usize;
+                        return self.mem[pos_to_return..pos_to_return + len_to_return].to_vec();
+                    }
+                }
+                _ => {
+                    panic!("unimplemented {:x}", opcode);
+                }
+            }
+            self.gas -= self.opcodes.get(&opcode).unwrap().gas;
+        }
+        return Vec::new();
+    }
+
+    // arithmetic
+    // TODO instead of [u8;32] converted to BigUint, use custom type uint256 that implements all
+    // the arithmetic
+    fn add(&mut self) {
+        let b0 = BigUint::from_bytes_be(&self.pop()[..]);
+        let b1 = BigUint::from_bytes_be(&self.pop()[..]);
+        self.push_arbitrary(&(b0 + b1).to_bytes_be());
+    }
+    fn mul(&mut self) {
+        let b0 = BigUint::from_bytes_be(&self.pop()[..]);
+        let b1 = BigUint::from_bytes_be(&self.pop()[..]);
+        self.push_arbitrary(&(b0 * b1).to_bytes_be());
+    }
+    fn sub(&mut self) {
+        let b0 = BigUint::from_bytes_be(&self.pop()[..]);
+        let b1 = BigUint::from_bytes_be(&self.pop()[..]);
+        if b0 >= b1 {
+            self.push_arbitrary(&(b0 - b1).to_bytes_be());
+        } else {
+            // 2**256
+            let max =
+                "115792089237316195423570985008687907853269984665640564039457584007913129639936"
+                    .parse::<BigUint>()
+                    .unwrap();
+            self.push_arbitrary(&(max + b0 - b1).to_bytes_be());
+        }
+    }
+    fn div(&mut self) {
+        let b0 = BigUint::from_bytes_be(&self.pop()[..]);
+        let b1 = BigUint::from_bytes_be(&self.pop()[..]);
+        self.push_arbitrary(&(b0 / b1).to_bytes_be());
+    }
+    fn sdiv(&mut self) {
+        panic!("unimplemented");
+    }
+    fn modulus(&mut self) {
+        let b0 = BigUint::from_bytes_be(&self.pop()[..]);
+        let b1 = BigUint::from_bytes_be(&self.pop()[..]);
+        self.push_arbitrary(&(b0 % b1).to_bytes_be());
+    }
+    fn smod(&mut self) {
+        panic!("unimplemented");
+    }
+    fn add_mod(&mut self) {
+        let b0 = BigUint::from_bytes_be(&self.pop()[..]);
+        let b1 = BigUint::from_bytes_be(&self.pop()[..]);
+        let b2 = BigUint::from_bytes_be(&self.pop()[..]);
+        self.push_arbitrary(&(b0 + b1 % b2).to_bytes_be());
+    }
+    fn mul_mod(&mut self) {
+        let b0 = BigUint::from_bytes_be(&self.pop()[..]);
+        let b1 = BigUint::from_bytes_be(&self.pop()[..]);
+        let b2 = BigUint::from_bytes_be(&self.pop()[..]);
+        self.push_arbitrary(&(b0 * b1 % b2).to_bytes_be());
+    }
+    fn exp(&mut self) {
+        panic!("unimplemented");
+        // let b0 = BigUint::from_bytes_be(&self.pop()[..]);
+        // let b1 = BigUint::from_bytes_be(&self.pop()[..]);
+        // self.push_arbitrary(&(pow(b0, b1)).to_bytes_be());
+    }
+
+    // boolean
+    // crypto
+
+    // contract context
+    fn calldata_load(&mut self, calldata: &[u8]) {}
+
+    // blockchain context
+
+    // storage and execution
+    fn extend_mem(&mut self, start: usize, size: usize) {
+        if size <= self.mem.len() || start + size <= self.mem.len() {
+            return;
+        }
+        let old_size = self.mem.len() / 32;
+        let new_size = (start + size) / 32;
+        let old_total_fee = old_size * GMEMORY + old_size.pow(2) / GQUADRATICMEMDENOM;
+        let new_total_fee = new_size * GMEMORY + new_size.pow(2) / GQUADRATICMEMDENOM;
+        let mem_fee = new_total_fee - old_total_fee;
+        self.gas -= mem_fee as u64;
+        let mut new_bytes: Vec<u8> = vec![0; size];
+        self.mem.append(&mut new_bytes);
+    }
+    fn mstore(&mut self) {
+        let pos = u256_to_u64(self.pop());
+        let val = self.pop();
+        self.extend_mem(pos as usize, 32);
+
+        self.mem[pos as usize..].copy_from_slice(&val);
     }
 }
 
@@ -213,5 +373,46 @@ mod tests {
         assert_eq!(s.pop(), str_to_u256("1"));
         // assert_eq!(s.pop(), str_to_u256("1"));
         // assert_eq!(s.pop(), error); // TODO expect error as stack is empty
+    }
+
+    // arithmetic
+    #[test]
+    fn execute_opcodes_0() {
+        let code = hex::decode("6005600c01").unwrap(); // 5+12
+        let calldata = vec![];
+
+        let mut s = Stack::new();
+        s.execute(&code, &calldata, false);
+        assert_eq!(s.pop(), str_to_u256("17"));
+        assert_eq!(s.gas, 9999999991);
+        assert_eq!(s.pc, 5);
+    }
+
+    #[test]
+    fn execute_opcodes_1() {
+        let code = hex::decode("60056004016000526001601ff3").unwrap();
+        let calldata = vec![];
+
+        let mut s = Stack::new();
+        let out = s.execute(&code, &calldata, false);
+
+        assert_eq!(out[0], 0x09);
+        assert_eq!(s.gas, 9999999976);
+        assert_eq!(s.pc, 12);
+        // assert_eq!(s.pop(), err); // TODO expect error as stack is empty
+    }
+
+    #[test]
+    fn execute_opcodes_2() {
+        let code = hex::decode("61010161010201").unwrap();
+        let calldata = vec![];
+
+        let mut s = Stack::new();
+        s.execute(&code, &calldata, false);
+
+        // assert_eq!(out[0], 0x09);
+        assert_eq!(s.gas, 9999999991);
+        assert_eq!(s.pc, 7);
+        assert_eq!(s.pop(), str_to_u256("515"));
     }
 }
