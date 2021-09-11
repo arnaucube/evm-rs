@@ -56,6 +56,11 @@ impl Stack {
         s.opcodes = new_opcodes();
         s
     }
+    fn print_stack(&self) {
+        for i in (0..self.stack.len()).rev() {
+            println!("{:x?}", &self.stack[i][28..]);
+        }
+    }
     fn push(&mut self, b: [u8; 32]) {
         self.stack.push(b);
     }
@@ -66,6 +71,14 @@ impl Stack {
         let mut d: [u8; 32] = [0; 32];
         d[32 - b.len()..].copy_from_slice(&b[..]);
         self.stack.push(d);
+    }
+    // put_arbitrary puts in the last element of the stack the value
+    fn put_arbitrary(&mut self, b: &[u8]) {
+        // TODO if b.len()>32 return error
+        let mut d: [u8; 32] = [0; 32];
+        d[32 - b.len()..].copy_from_slice(&b[..]);
+        let l = self.stack.len();
+        self.stack[l - 1] = d;
     }
     fn pop(&mut self) -> [u8; 32] {
         match self.stack.pop() {
@@ -84,6 +97,17 @@ impl Stack {
                 panic!("invalid opcode {:x}", opcode);
             }
 
+            if debug {
+                println!(
+                    "{:?} (0x{:x}): pc={:?} gas={:?}\nstack:",
+                    self.opcodes.get(&opcode).unwrap().name,
+                    opcode,
+                    self.pc,
+                    self.gas,
+                );
+                self.print_stack();
+                println!("");
+            }
             match opcode & 0xf0 {
                 0x00 => {
                     // arithmetic
@@ -102,6 +126,15 @@ impl Stack {
                         0x09 => self.mul_mod(),
                         0x0a => self.exp(),
                         // 0x0b => self.sign_extend(),
+                        _ => panic!("unimplemented {:x}", opcode),
+                    }
+                    self.pc += 1;
+                }
+                0x30 => {
+                    match opcode {
+                        0x35 => {
+                            self.calldata_load(&calldata);
+                        }
                         _ => panic!("unimplemented {:x}", opcode),
                     }
                     self.pc += 1;
@@ -201,7 +234,10 @@ impl Stack {
     // crypto
 
     // contract context
-    fn calldata_load(&mut self, calldata: &[u8]) {}
+    fn calldata_load(&mut self, calldata: &[u8]) {
+        self.put_arbitrary(&calldata[self.calldata_i..self.calldata_i + 32]);
+        self.calldata_i += 32;
+    }
 
     // blockchain context
 
@@ -414,5 +450,19 @@ mod tests {
         assert_eq!(s.gas, 9999999991);
         assert_eq!(s.pc, 7);
         assert_eq!(s.pop(), str_to_u256("515"));
+    }
+
+    #[test]
+    fn execute_opcodes_3() {
+        // contains calldata
+        let code = hex::decode("60003560203501").unwrap();
+        let calldata = hex::decode("00000000000000000000000000000000000000000000000000000000000000050000000000000000000000000000000000000000000000000000000000000004").unwrap();
+
+        let mut s = Stack::new();
+        s.execute(&code, &calldata, false);
+
+        assert_eq!(s.gas, 9999999985);
+        assert_eq!(s.pc, 7);
+        assert_eq!(s.pop(), str_to_u256("9"));
     }
 }
