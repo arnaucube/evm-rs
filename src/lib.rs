@@ -142,7 +142,15 @@ impl Stack {
                 0x50 => {
                     self.pc += 1;
                     match opcode {
+                        0x51 => self.mload(),
                         0x52 => self.mstore(),
+                        0x56 => self.jump(),
+                        0x57 => {
+                            self.jump_i();
+                        }
+                        0x5b => {
+                            self.jump_dest();
+                        }
                         _ => panic!("unimplemented {:x}", opcode),
                     }
                 }
@@ -151,6 +159,30 @@ impl Stack {
                     let n = (opcode - 0x5f) as usize;
                     self.push_arbitrary(&code[self.pc + 1..self.pc + 1 + n]);
                     self.pc += 1 + n;
+                }
+                0x80 => {
+                    // 0x8x dup
+                    let l = self.stack.len();
+                    if opcode > 0x7f {
+                        self.stack.push(self.stack[l - (opcode - 0x7f) as usize]);
+                    } else {
+                        self.stack.push(self.stack[(0x7f - opcode) as usize]);
+                    }
+                    self.pc += 1;
+                }
+                0x90 => {
+                    // 0x9x swap
+                    let l = self.stack.len();
+                    let pos;
+                    if opcode > 0x8e {
+                        pos = l - (opcode - 0x8e) as usize;
+                    } else {
+                        pos = (0x8e - opcode) as usize;
+                    }
+                    let tmp = self.stack[pos];
+                    self.stack[pos] = self.stack[l - 1];
+                    self.stack[l - 1] = tmp;
+                    self.pc += 1;
                 }
                 0xf0 => {
                     if opcode == 0xf3 {
@@ -255,12 +287,36 @@ impl Stack {
         let mut new_bytes: Vec<u8> = vec![0; size];
         self.mem.append(&mut new_bytes);
     }
+    fn mload(&mut self) {
+        let pos = u256_to_u64(self.pop()) as usize;
+        self.extend_mem(pos as usize, 32);
+        let mem32 = self.mem[pos..pos + 32].to_vec();
+        self.push_arbitrary(&mem32);
+    }
     fn mstore(&mut self) {
         let pos = u256_to_u64(self.pop());
         let val = self.pop();
         self.extend_mem(pos as usize, 32);
 
         self.mem[pos as usize..].copy_from_slice(&val);
+    }
+    fn jump(&mut self) {
+        // TODO that jump destination is valid
+        self.pc = u256_to_u64(self.pop()) as usize;
+    }
+    fn jump_i(&mut self) {
+        let new_pc = u256_to_u64(self.pop()) as usize;
+        if self.stack.len() > 0 {
+            let cond = u256_to_u64(self.pop()) as usize;
+            if cond != 0 {
+                self.pc = new_pc;
+            }
+        }
+        // let cont = self.pop();
+        // if cont {} // TODO depends on having impl Err in pop()
+    }
+    fn jump_dest(&mut self) {
+        // TODO
     }
 }
 
@@ -282,6 +338,7 @@ struct Opcode {
     ins: u32,
     outs: u32,
     gas: u64,
+    // operation: fn(),
 }
 
 fn new_opcode(name: &str, ins: u32, outs: u32, gas: u64) -> Opcode {
@@ -464,5 +521,58 @@ mod tests {
         assert_eq!(s.gas, 9999999985);
         assert_eq!(s.pc, 7);
         assert_eq!(s.pop(), str_to_u256("9"));
+    }
+
+    // storage and execution
+    #[test]
+    fn execute_opcodes_4() {
+        // contains loops
+        let code = hex::decode("6000356000525b600160005103600052600051600657").unwrap();
+        let calldata =
+            hex::decode("0000000000000000000000000000000000000000000000000000000000000005")
+                .unwrap();
+
+        let mut s = Stack::new();
+        s.execute(&code, &calldata, false);
+
+        assert_eq!(s.gas, 9999999795);
+        assert_eq!(s.pc, 22);
+        assert_eq!(s.stack.len(), 0);
+    }
+    #[test]
+    fn execute_opcodes_5() {
+        // contains loops, without using mem
+        let code = hex::decode("6000355b6001900380600357").unwrap();
+        let calldata =
+            hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
+                .unwrap();
+
+        let mut s = Stack::new();
+        s.execute(&code, &calldata, false);
+
+        assert_eq!(s.gas, 9999999968);
+        assert_eq!(s.pc, 12);
+
+        let code = hex::decode("6000355b6001900380600357").unwrap();
+        let calldata =
+            hex::decode("0000000000000000000000000000000000000000000000000000000000000002")
+                .unwrap();
+
+        let mut s = Stack::new();
+        s.execute(&code, &calldata, false);
+
+        assert_eq!(s.gas, 9999999942);
+        assert_eq!(s.pc, 12);
+
+        let code = hex::decode("6000355b6001900380600357").unwrap();
+        let calldata =
+            hex::decode("0000000000000000000000000000000000000000000000000000000000000005")
+                .unwrap();
+
+        let mut s = Stack::new();
+        s.execute(&code, &calldata, false);
+
+        assert_eq!(s.gas, 9999999864);
+        assert_eq!(s.pc, 12);
     }
 }
