@@ -188,7 +188,7 @@ impl Stack {
         Ok(())
     }
     pub fn sdiv(&mut self) -> Result<(), String> {
-        Err(format!("unimplemented"))
+        Err("unimplemented".to_string())
     }
     pub fn modulus(&mut self) -> Result<(), String> {
         let b0 = BigUint::from_bytes_be(&self.pop()?[..]);
@@ -197,7 +197,7 @@ impl Stack {
         Ok(())
     }
     pub fn smod(&mut self) -> Result<(), String> {
-        Err(format!("unimplemented"))
+        Err("unimplemented".to_string())
     }
     pub fn add_mod(&mut self) -> Result<(), String> {
         let b0 = BigUint::from_bytes_be(&self.pop()?[..]);
@@ -334,13 +334,20 @@ impl Stack {
         self.storage.insert(key, value.to_vec());
         Ok(())
     }
-    pub fn jump(&mut self) -> Result<(), String> {
+    pub fn jump(&mut self, code: &[u8]) -> Result<(), String> {
         // TODO that jump destination is valid
-        self.pc = u256::u256_to_u64(self.pop()?) as usize;
+        let new_pc = u256::u256_to_u64(self.pop()?) as usize;
+        if !valid_dest(code, new_pc) {
+            return Err(format!("not valid dest: {:02x}", new_pc));
+        }
+        self.pc = new_pc;
         Ok(())
     }
-    pub fn jump_i(&mut self) -> Result<(), String> {
+    pub fn jump_i(&mut self, code: &[u8]) -> Result<(), String> {
         let new_pc = u256::u256_to_u64(self.pop()?) as usize;
+        if !valid_dest(code, new_pc) {
+            return Err(format!("not valid dest: {:02x}", new_pc));
+        }
         if !self.stack.is_empty() {
             let cond = u256::u256_to_u64(self.pop()?) as usize;
             if cond != 0 {
@@ -355,6 +362,13 @@ impl Stack {
         // TODO
         Ok(())
     }
+}
+
+fn valid_dest(code: &[u8], pos: usize) -> bool {
+    if code[pos] == 0x5b {
+        return true;
+    }
+    false
 }
 
 fn upper_multiple_of_32(n: usize) -> usize {

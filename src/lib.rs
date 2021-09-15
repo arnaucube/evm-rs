@@ -40,13 +40,13 @@ impl Stack {
         }
     }
     pub fn print_memory(&self) {
-        if self.mem.len() > 0 {
+        if !self.mem.is_empty() {
             println!("memory ({}):", self.mem.len());
             println!("{:?}", vec_u8_to_hex(self.mem.to_vec()));
         }
     }
     pub fn print_storage(&self) {
-        if self.storage.len() > 0 {
+        if !self.storage.is_empty() {
             println!("storage ({}):", self.storage.len());
             for (key, value) in self.storage.iter() {
                 println!(
@@ -79,8 +79,15 @@ impl Stack {
     pub fn pop(&mut self) -> Result<[u8; 32], String> {
         match self.stack.pop() {
             Some(x) => Ok(x),
-            None => Err(format!("pop err")), // WIP
+            None => Err("pop err".to_string()), // WIP
         }
+    }
+    pub fn substract_gas(&mut self, val: u64) -> Result<(), String> {
+        if self.gas < val {
+            return Err("out of gas".to_string());
+        }
+        self.gas -= val;
+        Ok(())
     }
 
     pub fn execute(
@@ -150,8 +157,8 @@ impl Stack {
                         0x51 => self.mload()?,
                         0x52 => self.mstore()?,
                         0x55 => self.sstore()?,
-                        0x56 => self.jump()?,
-                        0x57 => self.jump_i()?,
+                        0x56 => self.jump(code)?,
+                        0x57 => self.jump_i(code)?,
                         0x5b => self.jump_dest()?,
                         _ => return Err(format!("unimplemented {:x}", opcode)),
                     }
@@ -195,7 +202,7 @@ impl Stack {
                     return Err(format!("unimplemented {:x}", opcode));
                 }
             }
-            self.gas -= self.opcodes.get(&opcode).unwrap().gas;
+            self.substract_gas(self.opcodes.get(&opcode).unwrap().gas)?;
         }
         Ok(Vec::new())
     }

@@ -170,6 +170,29 @@ fn execute_opcodes_7() {
 }
 
 #[test]
+fn execute_exceptions() {
+    let mut s = Stack::new();
+    let calldata = hex::decode("").unwrap();
+
+    let code = hex::decode("5f").unwrap();
+    let out = s.execute(&code, &calldata, false);
+    assert_eq!(out, Err(format!("invalid opcode 5f")));
+
+    let code = hex::decode("56").unwrap();
+    let out = s.execute(&code, &calldata, false);
+    assert_eq!(out, Err(format!("pop err")));
+
+    let code = hex::decode("600056").unwrap();
+    let out = s.execute(&code, &calldata, false);
+    assert_eq!(out, Err(format!("not valid dest: 00")));
+
+    s.gas = 1;
+    let code = hex::decode("6000").unwrap();
+    let out = s.execute(&code, &calldata, false);
+    assert_eq!(out, Err(format!("out of gas")));
+}
+
+#[test]
 fn execute_opcodes_8() {
     let code = hex::decode("611000805151").unwrap();
     let calldata = hex::decode("").unwrap();
@@ -190,7 +213,7 @@ fn execute_opcodes_9() {
     let calldata = hex::decode("").unwrap();
 
     let mut s = Stack::new();
-    s.execute(&code, &calldata, true).unwrap();
+    s.execute(&code, &calldata, false).unwrap();
 
     assert_eq!(s.gas, 9999974988);
     // assert_eq!(s.gas, 9999977788); // TODO WIP geth reported gas
