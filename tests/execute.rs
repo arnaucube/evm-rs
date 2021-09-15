@@ -3,13 +3,19 @@ use evm::*;
 #[test]
 fn stack_simple_push_pop() {
     let mut s = Stack::new();
-    s.push(str_to_u256("1"));
-    s.push(str_to_u256("2"));
-    s.push(str_to_u256("3"));
-    assert_eq!(s.pop(), str_to_u256("3"));
-    assert_eq!(s.pop(), str_to_u256("2"));
-    assert_eq!(s.pop(), str_to_u256("1"));
+    s.push(u256::str_to_u256("1"));
+    s.push(u256::str_to_u256("2"));
+    s.push(u256::str_to_u256("3"));
+    assert_eq!(s.pop(), u256::str_to_u256("3"));
+    assert_eq!(s.pop(), u256::str_to_u256("2"));
+    assert_eq!(s.pop(), u256::str_to_u256("1"));
     // assert_eq!(s.pop(), error); // TODO expect error as stack is empty
+}
+
+#[test]
+fn available_opcodes() {
+    let s = Stack::new();
+    println!("available opcodes {}/130", s.opcodes.len());
 }
 
 // arithmetic
@@ -20,7 +26,7 @@ fn execute_opcodes_0() {
 
     let mut s = Stack::new();
     s.execute(&code, &calldata, false);
-    assert_eq!(s.pop(), str_to_u256("17"));
+    assert_eq!(s.pop(), u256::str_to_u256("17"));
     assert_eq!(s.gas, 9999999991);
     assert_eq!(s.pc, 5);
 }
@@ -50,7 +56,7 @@ fn execute_opcodes_2() {
     // assert_eq!(out[0], 0x09);
     assert_eq!(s.gas, 9999999991);
     assert_eq!(s.pc, 7);
-    assert_eq!(s.pop(), str_to_u256("515"));
+    assert_eq!(s.pop(), u256::str_to_u256("515"));
 }
 
 #[test]
@@ -64,7 +70,7 @@ fn execute_opcodes_3() {
 
     assert_eq!(s.gas, 9999999985);
     assert_eq!(s.pc, 7);
-    assert_eq!(s.pop(), str_to_u256("9"));
+    assert_eq!(s.pop(), u256::str_to_u256("9"));
 }
 
 // storage and execution
@@ -115,16 +121,86 @@ fn execute_opcodes_5() {
     assert_eq!(s.gas, 9999999864);
     assert_eq!(s.pc, 12);
 }
-// #[test]
-// fn execute_opcodes_6() {
-//     // 0x36: calldata_size
-//     let code = hex::decode("366020036101000a600035045b6001900380600c57").unwrap();
-//     let calldata = hex::decode("05").unwrap();
-//
-//     let mut s = Stack::new();
-//     s.execute(&code, &calldata, false);
-//
-//     assert_eq!(s.gas, 9999999788);
-//     assert_eq!(s.pc, 21);
-//     assert_eq!(s.stack.len(), 0);
-// }
+#[test]
+fn execute_opcodes_6() {
+    // 0x36: calldata_size
+    let code = hex::decode("366020036101000a600035045b6001900380600c57").unwrap();
+    let calldata = hex::decode("01").unwrap();
+
+    let mut s = Stack::new();
+    s.execute(&code, &calldata, false);
+
+    assert_eq!(s.gas, 9999999892);
+    assert_eq!(s.pc, 21);
+    assert_eq!(s.stack.len(), 1);
+
+    let code = hex::decode("366020036101000a600035045b6001900380600c57").unwrap();
+    let calldata = hex::decode("05").unwrap();
+
+    let mut s = Stack::new();
+    s.execute(&code, &calldata, false);
+
+    assert_eq!(s.gas, 9999999788);
+    assert_eq!(s.pc, 21);
+    assert_eq!(s.stack.len(), 1);
+
+    let code = hex::decode("366020036101000a600035045b6001900380600c57").unwrap();
+    let calldata = hex::decode("0101").unwrap();
+
+    let mut s = Stack::new();
+    s.execute(&code, &calldata, false);
+
+    assert_eq!(s.gas, 9999993236);
+    assert_eq!(s.pc, 21);
+    assert_eq!(s.stack.len(), 1);
+}
+
+#[test]
+fn execute_opcodes_7() {
+    // contract deployment (code_copy)
+    let code = hex::decode("600580600b6000396000f36005600401").unwrap();
+    let calldata = hex::decode("").unwrap();
+
+    let mut s = Stack::new();
+    let out = s.execute(&code, &calldata, true);
+
+    assert_eq!(s.gas, 9999999976);
+    assert_eq!(s.pc, 10);
+    assert_eq!(s.stack.len(), 0);
+    assert_eq!(s.mem.len(), 32);
+    assert_eq!(
+        s.mem,
+        hex::decode("6005600401000000000000000000000000000000000000000000000000000000").unwrap()
+    );
+    assert_eq!(out, hex::decode("6005600401").unwrap());
+}
+
+#[test]
+fn execute_opcodes_8() {
+    let code = hex::decode("611000805151").unwrap();
+    let calldata = hex::decode("").unwrap();
+
+    let mut s = Stack::new();
+    s.execute(&code, &calldata, false);
+
+    assert_eq!(s.gas, 9999999569);
+    assert_eq!(s.pc, 6);
+    assert_eq!(s.stack.len(), 2);
+    assert_eq!(s.mem.len(), 4128);
+}
+
+#[test]
+fn execute_opcodes_9() {
+    // sstore (0x55)
+    let code = hex::decode("60026000556001600055").unwrap();
+    let calldata = hex::decode("").unwrap();
+
+    let mut s = Stack::new();
+    s.execute(&code, &calldata, true);
+
+    assert_eq!(s.gas, 9999974988);
+    // assert_eq!(s.gas, 9999977788); // TODO WIP geth reported gas
+    assert_eq!(s.pc, 10);
+    assert_eq!(s.stack.len(), 0);
+    assert_eq!(s.storage.len(), 1);
+}

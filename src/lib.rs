@@ -3,12 +3,15 @@
 use num_bigint::BigUint;
 use std::collections::HashMap;
 pub mod opcodes;
+pub mod u256;
 
 #[derive(Default)]
 pub struct Stack {
     pub pc: usize,
     pub calldata_i: usize,
+    pub calldata_size: usize,
     pub stack: Vec<[u8; 32]>,
+    pub storage: HashMap<[u8; 32], Vec<u8>>,
     pub mem: Vec<u8>,
     pub gas: u64,
     pub opcodes: HashMap<u8, opcodes::Opcode>,
@@ -19,7 +22,9 @@ impl Stack {
         let mut s = Stack {
             pc: 0,
             calldata_i: 0,
+            calldata_size: 32,
             stack: Vec::new(),
+            storage: HashMap::new(),
             mem: Vec::new(),
             gas: 10000000000,
             opcodes: HashMap::new(),
@@ -28,8 +33,28 @@ impl Stack {
         s
     }
     pub fn print_stack(&self) {
+        println!("stack ({}):", self.stack.len());
         for i in (0..self.stack.len()).rev() {
-            println!("{:x?}", &self.stack[i][28..]);
+            // println!("{:x}", &self.stack[i][28..]);
+            println!("{:?}", vec_u8_to_hex(self.stack[i].to_vec()));
+        }
+    }
+    pub fn print_memory(&self) {
+        if self.mem.len() > 0 {
+            println!("memory ({}):", self.mem.len());
+            println!("{:?}", vec_u8_to_hex(self.mem.to_vec()));
+        }
+    }
+    pub fn print_storage(&self) {
+        if self.storage.len() > 0 {
+            println!("storage ({}):", self.storage.len());
+            for (key, value) in self.storage.iter() {
+                println!(
+                    "{:?}: {:?}",
+                    vec_u8_to_hex(key.to_vec()),
+                    vec_u8_to_hex(value.to_vec())
+                );
+            }
         }
     }
     pub fn push(&mut self, b: [u8; 32]) {
@@ -47,14 +72,14 @@ impl Stack {
     pub fn put_arbitrary(&mut self, b: &[u8]) {
         // TODO if b.len()>32 return error
         let mut d: [u8; 32] = [0; 32];
-        d[32 - b.len()..].copy_from_slice(b);
+        d[0..b.len()].copy_from_slice(b); // put without left padding
         let l = self.stack.len();
         self.stack[l - 1] = d;
     }
     pub fn pop(&mut self) -> [u8; 32] {
         match self.stack.pop() {
             Some(x) => x,
-            None => panic!("err"),
+            None => panic!("pop err"),
         }
     }
 
@@ -71,13 +96,15 @@ impl Stack {
 
             if debug {
                 println!(
-                    "{:?} (0x{:x}): pc={:?} gas={:?}\nstack:",
+                    "{} (0x{:x}): pc={:?} gas={:?}",
                     self.opcodes.get(&opcode).unwrap().name,
                     opcode,
                     self.pc,
                     self.gas,
                 );
                 self.print_stack();
+                self.print_memory();
+                self.print_storage();
                 println!();
             }
             match opcode & 0xf0 {
@@ -85,6 +112,7 @@ impl Stack {
                     // arithmetic
                     match opcode {
                         0x00 => {
+                            println!("0x00: STOP");
                             return Vec::new();
                         }
                         0x01 => self.add(),
@@ -104,9 +132,9 @@ impl Stack {
                 }
                 0x30 => {
                     match opcode {
-                        0x35 => {
-                            self.calldata_load(&calldata);
-                        }
+                        0x35 => self.calldata_load(&calldata),
+                        0x36 => self.calldata_size(&calldata),
+                        0x39 => self.code_copy(&code),
                         _ => panic!("unimplemented {:x}", opcode),
                     }
                     self.pc += 1;
@@ -116,6 +144,7 @@ impl Stack {
                     match opcode {
                         0x51 => self.mload(),
                         0x52 => self.mstore(),
+                        0x55 => self.sstore(),
                         0x56 => self.jump(),
                         0x57 => self.jump_i(),
                         0x5b => self.jump_dest(),
@@ -152,13 +181,13 @@ impl Stack {
                 }
                 0xf0 => {
                     if opcode == 0xf3 {
-                        let pos_to_return = u256_to_u64(self.pop()) as usize;
-                        let len_to_return = u256_to_u64(self.pop()) as usize;
+                        let pos_to_return = u256::u256_to_u64(self.pop()) as usize;
+                        let len_to_return = u256::u256_to_u64(self.pop()) as usize;
                         return self.mem[pos_to_return..pos_to_return + len_to_return].to_vec();
                     }
                 }
                 _ => {
-                    panic!("unimplemented {:x}", opcode);
+                    return panic!("unimplemented {:x}", opcode);
                 }
             }
             self.gas -= self.opcodes.get(&opcode).unwrap().gas;
@@ -166,15 +195,7 @@ impl Stack {
         Vec::new()
     }
 }
-
-pub fn u256_to_u64(a: [u8; 32]) -> u64 {
-    let mut b8: [u8; 8] = [0; 8];
-    b8.copy_from_slice(&a[32 - 8..32]);
-    u64::from_be_bytes(b8)
-}
-pub fn str_to_u256(s: &str) -> [u8; 32] {
-    let bi = s.parse::<BigUint>().unwrap().to_bytes_be();
-    let mut r: [u8; 32] = [0; 32];
-    r[32 - bi.len()..].copy_from_slice(&bi[..]);
-    r
+pub fn vec_u8_to_hex(bytes: Vec<u8>) -> String {
+    let strs: Vec<String> = bytes.iter().map(|b| format!("{:02X}", b)).collect();
+    strs.join("")
 }
