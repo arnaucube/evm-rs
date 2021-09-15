@@ -6,16 +6,10 @@ fn stack_simple_push_pop() {
     s.push(u256::str_to_u256("1"));
     s.push(u256::str_to_u256("2"));
     s.push(u256::str_to_u256("3"));
-    assert_eq!(s.pop(), u256::str_to_u256("3"));
-    assert_eq!(s.pop(), u256::str_to_u256("2"));
-    assert_eq!(s.pop(), u256::str_to_u256("1"));
-    // assert_eq!(s.pop(), error); // TODO expect error as stack is empty
-}
-
-#[test]
-fn available_opcodes() {
-    let s = Stack::new();
-    println!("available opcodes {}/130", s.opcodes.len());
+    assert_eq!(s.pop().unwrap(), u256::str_to_u256("3"));
+    assert_eq!(s.pop().unwrap(), u256::str_to_u256("2"));
+    assert_eq!(s.pop().unwrap(), u256::str_to_u256("1"));
+    assert_eq!(s.pop(), Err(format!("pop err"))); // WIP
 }
 
 // arithmetic
@@ -25,8 +19,8 @@ fn execute_opcodes_0() {
     let calldata = vec![];
 
     let mut s = Stack::new();
-    s.execute(&code, &calldata, false);
-    assert_eq!(s.pop(), u256::str_to_u256("17"));
+    s.execute(&code, &calldata, false).unwrap();
+    assert_eq!(s.pop().unwrap(), u256::str_to_u256("17"));
     assert_eq!(s.gas, 9999999991);
     assert_eq!(s.pc, 5);
 }
@@ -37,7 +31,7 @@ fn execute_opcodes_1() {
     let calldata = vec![];
 
     let mut s = Stack::new();
-    let out = s.execute(&code, &calldata, false);
+    let out = s.execute(&code, &calldata, false).unwrap();
 
     assert_eq!(out[0], 0x09);
     assert_eq!(s.gas, 9999999976);
@@ -51,12 +45,12 @@ fn execute_opcodes_2() {
     let calldata = vec![];
 
     let mut s = Stack::new();
-    s.execute(&code, &calldata, false);
+    s.execute(&code, &calldata, false).unwrap();
 
     // assert_eq!(out[0], 0x09);
     assert_eq!(s.gas, 9999999991);
     assert_eq!(s.pc, 7);
-    assert_eq!(s.pop(), u256::str_to_u256("515"));
+    assert_eq!(s.pop().unwrap(), u256::str_to_u256("515"));
 }
 
 #[test]
@@ -66,11 +60,11 @@ fn execute_opcodes_3() {
     let calldata = hex::decode("00000000000000000000000000000000000000000000000000000000000000050000000000000000000000000000000000000000000000000000000000000004").unwrap();
 
     let mut s = Stack::new();
-    s.execute(&code, &calldata, false);
+    s.execute(&code, &calldata, false).unwrap();
 
     assert_eq!(s.gas, 9999999985);
     assert_eq!(s.pc, 7);
-    assert_eq!(s.pop(), u256::str_to_u256("9"));
+    assert_eq!(s.pop().unwrap(), u256::str_to_u256("9"));
 }
 
 // storage and execution
@@ -82,7 +76,7 @@ fn execute_opcodes_4() {
         hex::decode("0000000000000000000000000000000000000000000000000000000000000005").unwrap();
 
     let mut s = Stack::new();
-    s.execute(&code, &calldata, false);
+    s.execute(&code, &calldata, false).unwrap();
 
     assert_eq!(s.gas, 9999999795);
     assert_eq!(s.pc, 22);
@@ -96,7 +90,7 @@ fn execute_opcodes_5() {
         hex::decode("0000000000000000000000000000000000000000000000000000000000000001").unwrap();
 
     let mut s = Stack::new();
-    s.execute(&code, &calldata, false);
+    s.execute(&code, &calldata, false).unwrap();
 
     assert_eq!(s.gas, 9999999968);
     assert_eq!(s.pc, 12);
@@ -106,7 +100,7 @@ fn execute_opcodes_5() {
         hex::decode("0000000000000000000000000000000000000000000000000000000000000002").unwrap();
 
     let mut s = Stack::new();
-    s.execute(&code, &calldata, false);
+    s.execute(&code, &calldata, false).unwrap();
 
     assert_eq!(s.gas, 9999999942);
     assert_eq!(s.pc, 12);
@@ -116,7 +110,7 @@ fn execute_opcodes_5() {
         hex::decode("0000000000000000000000000000000000000000000000000000000000000005").unwrap();
 
     let mut s = Stack::new();
-    s.execute(&code, &calldata, false);
+    s.execute(&code, &calldata, false).unwrap();
 
     assert_eq!(s.gas, 9999999864);
     assert_eq!(s.pc, 12);
@@ -128,7 +122,7 @@ fn execute_opcodes_6() {
     let calldata = hex::decode("01").unwrap();
 
     let mut s = Stack::new();
-    s.execute(&code, &calldata, false);
+    s.execute(&code, &calldata, false).unwrap();
 
     assert_eq!(s.gas, 9999999892);
     assert_eq!(s.pc, 21);
@@ -138,7 +132,7 @@ fn execute_opcodes_6() {
     let calldata = hex::decode("05").unwrap();
 
     let mut s = Stack::new();
-    s.execute(&code, &calldata, false);
+    s.execute(&code, &calldata, false).unwrap();
 
     assert_eq!(s.gas, 9999999788);
     assert_eq!(s.pc, 21);
@@ -148,7 +142,7 @@ fn execute_opcodes_6() {
     let calldata = hex::decode("0101").unwrap();
 
     let mut s = Stack::new();
-    s.execute(&code, &calldata, false);
+    s.execute(&code, &calldata, false).unwrap();
 
     assert_eq!(s.gas, 9999993236);
     assert_eq!(s.pc, 21);
@@ -162,7 +156,7 @@ fn execute_opcodes_7() {
     let calldata = hex::decode("").unwrap();
 
     let mut s = Stack::new();
-    let out = s.execute(&code, &calldata, true);
+    let out = s.execute(&code, &calldata, true).unwrap();
 
     assert_eq!(s.gas, 9999999976);
     assert_eq!(s.pc, 10);
@@ -181,7 +175,7 @@ fn execute_opcodes_8() {
     let calldata = hex::decode("").unwrap();
 
     let mut s = Stack::new();
-    s.execute(&code, &calldata, false);
+    s.execute(&code, &calldata, false).unwrap();
 
     assert_eq!(s.gas, 9999999569);
     assert_eq!(s.pc, 6);
@@ -196,7 +190,7 @@ fn execute_opcodes_9() {
     let calldata = hex::decode("").unwrap();
 
     let mut s = Stack::new();
-    s.execute(&code, &calldata, true);
+    s.execute(&code, &calldata, true).unwrap();
 
     assert_eq!(s.gas, 9999974988);
     // assert_eq!(s.gas, 9999977788); // TODO WIP geth reported gas

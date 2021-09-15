@@ -76,14 +76,19 @@ impl Stack {
         let l = self.stack.len();
         self.stack[l - 1] = d;
     }
-    pub fn pop(&mut self) -> [u8; 32] {
+    pub fn pop(&mut self) -> Result<[u8; 32], String> {
         match self.stack.pop() {
-            Some(x) => x,
-            None => panic!("pop err"),
+            Some(x) => Ok(x),
+            None => Err(format!("pop err")), // WIP
         }
     }
 
-    pub fn execute(&mut self, code: &[u8], calldata: &[u8], debug: bool) -> Vec<u8> {
+    pub fn execute(
+        &mut self,
+        code: &[u8],
+        calldata: &[u8],
+        debug: bool,
+    ) -> Result<Vec<u8>, String> {
         self.pc = 0;
         self.calldata_i = 0;
         let l = code.len();
@@ -91,7 +96,7 @@ impl Stack {
         while self.pc < l {
             let opcode = code[self.pc];
             if !self.opcodes.contains_key(&opcode) {
-                panic!("invalid opcode {:x}", opcode);
+                return Err(format!("invalid opcode {:x}", opcode));
             }
 
             if debug {
@@ -113,20 +118,20 @@ impl Stack {
                     match opcode {
                         0x00 => {
                             println!("0x00: STOP");
-                            return Vec::new();
+                            return Ok(Vec::new());
                         }
-                        0x01 => self.add(),
-                        0x02 => self.mul(),
-                        0x03 => self.sub(),
-                        0x04 => self.div(),
-                        0x05 => self.sdiv(),
-                        0x06 => self.modulus(),
-                        0x07 => self.smod(),
-                        0x08 => self.add_mod(),
-                        0x09 => self.mul_mod(),
-                        0x0a => self.exp(),
+                        0x01 => self.add()?,
+                        0x02 => self.mul()?,
+                        0x03 => self.sub()?,
+                        0x04 => self.div()?,
+                        0x05 => self.sdiv()?,
+                        0x06 => self.modulus()?,
+                        0x07 => self.smod()?,
+                        0x08 => self.add_mod()?,
+                        0x09 => self.mul_mod()?,
+                        0x0a => self.exp()?,
                         // 0x0b => self.sign_extend(),
-                        _ => panic!("unimplemented {:x}", opcode),
+                        _ => return Err(format!("unimplemented {:x}", opcode)),
                     }
                     self.pc += 1;
                 }
@@ -134,21 +139,21 @@ impl Stack {
                     match opcode {
                         0x35 => self.calldata_load(&calldata),
                         0x36 => self.calldata_size(&calldata),
-                        0x39 => self.code_copy(&code),
-                        _ => panic!("unimplemented {:x}", opcode),
+                        0x39 => self.code_copy(&code)?,
+                        _ => return Err(format!("unimplemented {:x}", opcode)),
                     }
                     self.pc += 1;
                 }
                 0x50 => {
                     self.pc += 1;
                     match opcode {
-                        0x51 => self.mload(),
-                        0x52 => self.mstore(),
-                        0x55 => self.sstore(),
-                        0x56 => self.jump(),
-                        0x57 => self.jump_i(),
-                        0x5b => self.jump_dest(),
-                        _ => panic!("unimplemented {:x}", opcode),
+                        0x51 => self.mload()?,
+                        0x52 => self.mstore()?,
+                        0x55 => self.sstore()?,
+                        0x56 => self.jump()?,
+                        0x57 => self.jump_i()?,
+                        0x5b => self.jump_dest()?,
+                        _ => return Err(format!("unimplemented {:x}", opcode)),
                     }
                 }
                 0x60 | 0x70 => {
@@ -181,18 +186,18 @@ impl Stack {
                 }
                 0xf0 => {
                     if opcode == 0xf3 {
-                        let pos_to_return = u256::u256_to_u64(self.pop()) as usize;
-                        let len_to_return = u256::u256_to_u64(self.pop()) as usize;
-                        return self.mem[pos_to_return..pos_to_return + len_to_return].to_vec();
+                        let pos_to_return = u256::u256_to_u64(self.pop()?) as usize;
+                        let len_to_return = u256::u256_to_u64(self.pop()?) as usize;
+                        return Ok(self.mem[pos_to_return..pos_to_return + len_to_return].to_vec());
                     }
                 }
                 _ => {
-                    return panic!("unimplemented {:x}", opcode);
+                    return Err(format!("unimplemented {:x}", opcode));
                 }
             }
             self.gas -= self.opcodes.get(&opcode).unwrap().gas;
         }
-        Vec::new()
+        Ok(Vec::new())
     }
 }
 pub fn vec_u8_to_hex(bytes: Vec<u8>) -> String {
