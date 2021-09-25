@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 
-use num_bigint::BigUint;
 use std::collections::HashMap;
 pub mod opcodes;
 pub mod u256;
@@ -82,6 +81,12 @@ impl Stack {
             None => Err("pop err".to_string()), // WIP
         }
     }
+    pub fn peek(&mut self) -> Result<[u8; 32], String> {
+        if self.stack.is_empty() {
+            return Err("peek err".to_string());
+        }
+        Ok(self.stack[self.stack.len() - 1])
+    }
     pub fn substract_gas(&mut self, val: u64) -> Result<(), String> {
         if self.gas < val {
             return Err("out of gas".to_string());
@@ -142,9 +147,27 @@ impl Stack {
                     }
                     self.pc += 1;
                 }
+                0x10 => {
+                    // arithmetic
+                    match opcode {
+                        0x10 => self.lt()?,
+                        0x11 => self.gt()?,
+                        // 0x12 => self.slt()?,
+                        // 0x13 => self.sgt()?,
+                        0x14 => self.eq()?,
+                        0x15 => self.is_zero()?,
+                        0x16 => self.and()?,
+                        0x17 => self.or()?,
+                        0x18 => self.xor()?,
+                        0x19 => self.not()?,
+                        // 0x1a => self.byte()?,
+                        _ => return Err(format!("unimplemented {:x}", opcode)),
+                    }
+                    self.pc += 1;
+                }
                 0x30 => {
                     match opcode {
-                        0x35 => self.calldata_load(&calldata),
+                        0x35 => self.calldata_load(&calldata)?,
                         0x36 => self.calldata_size(&calldata),
                         0x39 => self.code_copy(&code)?,
                         _ => return Err(format!("unimplemented {:x}", opcode)),

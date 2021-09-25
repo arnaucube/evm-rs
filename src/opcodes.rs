@@ -1,4 +1,6 @@
 use super::*;
+use num_bigint::BigUint;
+use num_traits::identities::Zero;
 
 // Non-opcode gas prices
 const GDEFAULT: usize = 1;
@@ -8,6 +10,7 @@ const GSTORAGEREFUND: usize = 15000;
 const GSTORAGEKILL: usize = 5000;
 const GSTORAGEMOD: usize = 5000;
 const GSTORAGEADD: usize = 20000;
+
 const GEXPONENTBYTE: usize = 10; // cost of EXP exponent per byte
 const EXP_SUPPLEMENTAL_GAS: usize = 40;
 const GCOPY: usize = 3; // cost to copy one 32 byte word
@@ -244,12 +247,77 @@ impl Stack {
     }
 
     // boolean
+    pub fn lt(&mut self) -> Result<(), String> {
+        let a = BigUint::from_bytes_be(&self.pop()?[..]);
+        let b = BigUint::from_bytes_be(&self.pop()?[..]);
+        self.push(u256::usize_to_u256((a < b) as usize));
+        Ok(())
+    }
+    pub fn gt(&mut self) -> Result<(), String> {
+        let a = BigUint::from_bytes_be(&self.pop()?[..]);
+        let b = BigUint::from_bytes_be(&self.pop()?[..]);
+        self.push(u256::usize_to_u256((a > b) as usize));
+        Ok(())
+    }
+    pub fn eq(&mut self) -> Result<(), String> {
+        let a = BigUint::from_bytes_be(&self.pop()?[..]);
+        let b = BigUint::from_bytes_be(&self.pop()?[..]);
+        self.push(u256::usize_to_u256((a == b) as usize));
+        Ok(())
+    }
+    pub fn is_zero(&mut self) -> Result<(), String> {
+        let a = BigUint::from_bytes_be(&self.pop()?[..]);
+        self.push(u256::usize_to_u256(a.is_zero() as usize));
+        Ok(())
+    }
+    pub fn and(&mut self) -> Result<(), String> {
+        let a = BigUint::from_bytes_be(&self.pop()?[..]);
+        let b = BigUint::from_bytes_be(&self.pop()?[..]);
+        self.push_arbitrary(&(a & b).to_bytes_be());
+        Ok(())
+    }
+    pub fn or(&mut self) -> Result<(), String> {
+        let a = BigUint::from_bytes_be(&self.pop()?[..]);
+        let b = BigUint::from_bytes_be(&self.pop()?[..]);
+        self.push_arbitrary(&(a | b).to_bytes_be());
+        Ok(())
+    }
+    pub fn xor(&mut self) -> Result<(), String> {
+        let a = BigUint::from_bytes_be(&self.pop()?[..]);
+        let b = BigUint::from_bytes_be(&self.pop()?[..]);
+        self.push_arbitrary(&(a ^ b).to_bytes_be());
+        Ok(())
+    }
+    pub fn not(&mut self) -> Result<(), String> {
+        // 2**256-1 TODO this will not be here hardcoded, there will be a custom type uint256
+        let f = "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+            .parse::<BigUint>()
+            .unwrap();
+
+        let a = BigUint::from_bytes_be(&self.pop()?[..]);
+        self.push_arbitrary(&(f - a).to_bytes_be());
+        Ok(())
+    }
+
     // crypto
 
     // contract context
-    pub fn calldata_load(&mut self, calldata: &[u8]) {
-        self.put_arbitrary(&calldata[self.calldata_i..self.calldata_i + self.calldata_size]);
+    pub fn calldata_load(&mut self, calldata: &[u8]) -> Result<(), String> {
+        let mut start = self.calldata_i;
+        if !self.stack.is_empty() {
+            start = u256::u256_to_u64(self.peek()?) as usize;
+        }
+        let l = calldata.len();
+        if start > l {
+            start = l;
+        }
+        let mut end = start + self.calldata_size;
+        if end > l {
+            end = l;
+        }
+        self.put_arbitrary(&calldata[start..end]);
         self.calldata_i += self.calldata_size;
+        Ok(())
     }
     pub fn calldata_size(&mut self, calldata: &[u8]) {
         self.calldata_size = calldata.len();
@@ -310,6 +378,7 @@ impl Stack {
         Ok(())
     }
     pub fn sstore(&mut self) -> Result<(), String> {
+        // TODO WIP
         let key = self.pop()?;
         let value = self.pop()?;
         if self.storage.contains_key(&key) {
