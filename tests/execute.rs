@@ -216,10 +216,10 @@ fn execute_opcodes_9() {
     s.execute(&code, &calldata, false).unwrap();
 
     // assert_eq!(s.gas, 9999977788); // TODO WIP geth reported gas
-    assert_eq!(s.gas, 9999974988);
+    assert_eq!(s.gas, 9999955788);
     assert_eq!(s.pc, 10);
     assert_eq!(s.stack.len(), 0);
-    assert_eq!(s.storage.len(), 1);
+    assert_eq!(s.storage.len(), 0);
 }
 
 #[test]
@@ -230,14 +230,11 @@ fn execute_opcodes_10() {
     .unwrap();
     let calldata = hex::decode("a5f3c23b00000000000000000000000000000000000000000000000000000000000000050000000000000000000000000000000000000000000000000000000000000004").unwrap();
 
-    println!("LEN {:?}", calldata.len());
-
     let mut s = Stack::new();
     s.execute(&code, &calldata, true).unwrap();
 
-    // assert_eq!(s.gas, 9999977752); // WIP correct sstore gas computation
-    assert_eq!(s.gas, 9999979852);
+    assert_eq!(s.gas, 9999977752);
     assert_eq!(s.pc, 25);
     assert_eq!(s.stack.len(), 1);
-    assert_eq!(s.storage.len(), 1);
+    assert_eq!(s.storage.len(), 0);
 }

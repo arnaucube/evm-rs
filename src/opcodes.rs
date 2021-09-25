@@ -11,6 +11,14 @@ const GSTORAGEKILL: usize = 5000;
 const GSTORAGEMOD: usize = 5000;
 const GSTORAGEADD: usize = 20000;
 
+const NETSSTORENOOPGAS: u64 = 200;
+const NETSSTOREINITGAS: u64 = 20000;
+const NETSSTORECLEARREFUND: u64 = 15000;
+const NETSSTORERESETCLEARREFUND: u64 = 19800;
+const NETSSTORERESETREFUND: u64 = 4800;
+const NETSSTORECLEANGAS: u64 = 5000;
+const NETSSTOREDIRTYGAS: u64 = 200;
+
 const GEXPONENTBYTE: usize = 10; // cost of EXP exponent per byte
 const EXP_SUPPLEMENTAL_GAS: usize = 40;
 const GCOPY: usize = 3; // cost to copy one 32 byte word
@@ -40,7 +48,6 @@ pub struct Opcode {
     pub ins: u32,
     pub outs: u32,
     pub gas: u64,
-    // operation: fn(),
 }
 
 pub fn new_opcode(name: &str, ins: u32, outs: u32, gas: u64) -> Opcode {
@@ -378,28 +385,66 @@ impl Stack {
         Ok(())
     }
     pub fn sstore(&mut self) -> Result<(), String> {
-        // TODO WIP
+        // https://eips.ethereum.org/EIPS/eip-3529
+        // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-1283.md
+        // 1. If current value equals new value (this is a no-op), 200 gas is deducted.
+        // 2. If current value does not equal new value
+        //   2.1. If original value equals current value (this storage slot has not been changed by the current execution context)
+        //     2.1.1. If original value is 0, 20000 gas is deducted.
+        // 	   2.1.2. Otherwise, 5000 gas is deducted. If new value is 0, add 15000 gas to refund counter.
+        // 	2.2. If original value does not equal current value (this storage slot is dirty), 200 gas is deducted. Apply both of the following clauses.
+        // 	  2.2.1. If original value is not 0
+        //       2.2.1.1. If current value is 0 (also means that new value is not 0), remove 15000 gas from refund counter. We can prove that refund counter will never go below 0.
+        //       2.2.1.2. If new value is 0 (also means that current value is not 0), add 15000 gas to refund counter.
+        // 	  2.2.2. If original value equals new value (this storage slot is reset)
+        //       2.2.2.1. If original value is 0, add 19800 gas to refund counter.
+        // 	     2.2.2.2. Otherwise, add 4800 gas to refund counter.
+
+        let empty: Vec<u8> = Vec::new();
         let key = self.pop()?;
         let value = self.pop()?;
-        if self.storage.contains_key(&key) {
-            let old_value = self.storage.get(&key).unwrap();
-            if &value.to_vec() == old_value {
-                // if the new value is the same as the old one, do not set
+        let original = match self.storage_committed.get(&key) {
+            Some(v) => v.clone(),
+            None => empty.clone(),
+        };
+        let current = match self.storage.get(&key) {
+            Some(v) => v.clone(),
+            None => {
+                self.gas -= 2100;
+                empty.clone()
+            }
+        };
+
+        if current == value {
+            self.gas -= NETSSTORENOOPGAS;
+            return Ok(());
+        }
+        if original == current {
+            if original.is_empty() {
+                self.gas -= NETSSTOREINITGAS;
                 return Ok(());
             }
-            // if value (from self.pop()) does not exist in the stack, is a STORAGEKILL TODO
-            println!("mingas {:?}", GSTORAGEMOD);
-            self.gas -= GSTORAGEMOD as u64;
-        } else {
-            // if value does not exist, substract gas for the addition
-            println!("mingas {:?}", GSTORAGEADD);
-            self.gas -= GSTORAGEADD as u64;
+            if value.is_empty() {
+                self.gas += NETSSTORECLEARREFUND;
+            }
+            self.gas -= NETSSTORECLEANGAS;
+            return Ok(());
         }
-        println!(
-            "insert {:?} - {:?}",
-            vec_u8_to_hex(key.to_vec()),
-            vec_u8_to_hex(value.to_vec())
-        );
+        if !original.is_empty() {
+            if current.is_empty() {
+                self.gas -= NETSSTORECLEARREFUND;
+            } else if value.is_empty() {
+                self.gas += NETSSTORECLEARREFUND;
+            }
+        }
+        if original == value {
+            if original.is_empty() {
+                self.gas += NETSSTORERESETCLEARREFUND;
+            } else {
+                self.gas += NETSSTORERESETREFUND;
+            }
+        }
+        self.gas -= NETSSTOREDIRTYGAS;
         self.storage.insert(key, value.to_vec());
         Ok(())
     }
